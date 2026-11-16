@@ -1,11 +1,80 @@
-# CSE 573 Movie Recommendation — Member 1
+# Semantic Movie Recommender
 
-The complete Member 1 handoff includes data cleaning and linking, the
-chronological per-user 80/20 split, a shared 5,000-movie catalog, and TF-IDF
-recommendations.
+CSE 573 · Group 13
 
-Start with [SETUP_GUIDE.md](SETUP_GUIDE.md) for Windows setup, included outputs,
-rebuild commands, and teammate integration examples.
+This repository implements data preparation and the TF-IDF baseline for the
+movie recommendation project. It links MovieLens 20M ratings to TMDB metadata,
+creates chronological per-user 80/20 splits, and selects a shared catalog of
+5,000 movies using training popularity.
 
-See [SOURCES.md](SOURCES.md) for input provenance and [VALIDATION.md](VALIDATION.md)
-for the completed checks.
+## Setup
+
+Use Python 3.12. From the project directory, run the following on Windows.
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt -e .
+```
+
+On macOS/Linux, use `python3.12` to create the environment and
+`.venv/bin/python` for subsequent commands.
+
+## Prepare the data and model
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_pipeline.py --download
+```
+
+This downloads and verifies the source files, cleans and links the datasets,
+creates the split and catalog, exports the data, fits TF-IDF, and generates
+Top-10 rankings. Outputs are written to `data/processed/`.
+
+If prepared data and model files are already available, place them in
+`data/processed/` and run the following commands.
+
+```powershell
+.\.venv\Scripts\python.exe -m movie_rec.cli verify
+.\.venv\Scripts\python.exe -m movie_rec.cli recommend 1 --model data/processed/tfidf_model.npz --k 10
+```
+
+MovieLens ID 1 is Toy Story. Recommendations include movie IDs, titles, and
+cosine similarity scores.
+
+## Method
+
+Users must have at least 20 linked, unique ratings. Their earliest
+floor(0.8 × n) ratings form training, with the remaining ratings held out for
+testing. Equal timestamps are ordered by canonical movie ID.
+
+Catalog sampling uses seed 42 and training-rating count bands of 0, 1–9,
+10–99, 100–999, 1,000–9,999, and 10,000+. Movies require a title and overview.
+The split precedes catalog filtering, so filtering to the catalog can change
+each user's train/test proportions.
+
+TF-IDF uses overviews, genres, and keywords, with unigrams and bigrams,
+English stop-word removal, and L2 normalization. Recommendations exclude the
+seed movie and resolve equal scores by movie ID.
+
+## Outputs
+
+| File | Contents |
+| --- | --- |
+| catalog.csv | Shared movie metadata |
+| catalog_ids.csv | Canonical MovieLens and TMDB IDs |
+| train.csv.gz and test.csv.gz | Full linked rating partitions |
+| split_manifest.csv.gz | Per-user counts and timestamp boundaries |
+| movie_id_map.csv | Source-to-canonical MovieLens IDs |
+| movies_clean.csv.gz | Cleaned linked metadata |
+| tfidf_model.npz | Fitted TF-IDF model |
+| tfidf_catalog_top10.csv | Ten recommendations per catalog seed |
+| manifest.json and checksums.json | Preparation counts and output integrity hashes |
+
+Raw data, generated outputs, and virtual environments are excluded from Git.
+See [SOURCES.md](SOURCES.md) for data provenance and usage terms, and
+[VALIDATION.md](VALIDATION.md) for the completed checks.
+
+## Tests
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
