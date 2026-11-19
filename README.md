@@ -2,10 +2,10 @@
 
 CSE 573 · Group 13
 
-This repository implements data preparation and the TF-IDF baseline for the
-movie recommendation project. It links MovieLens 20M ratings to TMDB metadata,
-creates chronological per-user 80/20 splits, and selects a shared catalog of
-5,000 movies using training popularity.
+This repository implements data preparation, the TF-IDF baseline, Item-KNN, and
+a shared evaluation protocol for the movie recommendation project. It links
+MovieLens 20M ratings to TMDB metadata, creates chronological per-user 80/20
+splits, and selects a shared catalog of 5,000 movies using training popularity.
 
 ## Setup
 
@@ -40,6 +40,51 @@ If prepared data and model files are already available, place them in
 MovieLens ID 1 is Toy Story. Recommendations include movie IDs, titles, and
 cosine similarity scores.
 
+## Item-KNN and shared evaluation
+
+Member 2 reuses the Member 1 catalog, split, seed queries, and labels. It does
+not rebuild IDs, the split, or the catalog. With prepared files in
+`data/processed/`:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_member2.py
+```
+
+Or run the steps separately:
+
+```powershell
+.\.venv\Scripts\python.exe -m movie_rec.cli train-itemknn --min-overlap 5
+.\.venv\Scripts\python.exe -m movie_rec.cli recommend 1 --model data/processed/itemknn_model.npz --k 10
+.\.venv\Scripts\python.exe -m movie_rec.cli evaluate --k 10
+```
+
+`evaluate` scores TF-IDF and Item-KNN on the same queries and writes
+`baseline_metrics.csv`, `baseline_metrics.json`, and
+`baseline_query_metrics.csv`. Pass `--limit` only when debugging.
+
+Item-KNN builds a sparse user–movie matrix from **training** ratings on catalog
+movies, computes item cosine similarity, and zeros pairs with fewer than
+`min_overlap` co-raters (default 5). Test ratings are not used for fitting.
+The seed movie is always excluded. Previously rated training movies are not
+also filtered: Member 1 and the project slides only document excluding the
+seed, while requiring the same catalog, seeds, labels, and Top-K.
+
+Evaluation queries are Member 1 `seed_queries`: catalog movies a user rated
+≥ 4.0 in training, limited to users who have at least one catalog test rating
+≥ 4.0. Ground truth is `evaluation_labels`. Metrics are Precision@K, Recall@K,
+binary NDCG@K, and Hit Rate@K, macro-averaged over queries. K is configurable;
+K=10 is the primary reported cutoff.
+
+Full MovieLens 20M evaluation (5,404,341 queries, seed excluded only):
+
+| Model | Precision@10 | Recall@10 | NDCG@10 | Hit Rate@10 |
+| --- | --- | --- | --- | --- |
+| TF-IDF | 0.00808 | 0.00568 | 0.00963 | 0.07429 |
+| Item-KNN | 0.03480 | 0.03024 | 0.03958 | 0.25181 |
+
+These numbers are reproduced by `scripts/run_member2.py`. Metric CSVs, models, and
+`data/processed/` stay gitignored.
+
 ## Method
 
 Users must have at least 20 linked, unique ratings. Their earliest
@@ -52,8 +97,9 @@ The split precedes catalog filtering, so filtering to the catalog can change
 each user's train/test proportions.
 
 TF-IDF uses overviews, genres, and keywords, with unigrams and bigrams,
-English stop-word removal, and L2 normalization. Recommendations exclude the
-seed movie and resolve equal scores by movie ID.
+English stop-word removal, and L2 normalization. Item-KNN uses cosine
+similarity of training rating vectors with a minimum co-rating threshold.
+Recommendations exclude the seed movie and resolve equal scores by movie ID.
 
 ## Outputs
 
@@ -67,6 +113,9 @@ seed movie and resolve equal scores by movie ID.
 | movies_clean.csv.gz | Cleaned linked metadata |
 | tfidf_model.npz | Fitted TF-IDF model |
 | tfidf_catalog_top10.csv | Ten recommendations per catalog seed |
+| itemknn_model.npz | Fitted Item-KNN model (Member 2; not part of Member 1 checksums) |
+| baseline_metrics.csv / baseline_metrics.json | TF-IDF vs Item-KNN metrics |
+| baseline_query_metrics.csv | Per-query scores for later comparisons |
 | manifest.json and checksums.json | Preparation counts and output integrity hashes |
 
 Raw data, generated outputs, and virtual environments are excluded from Git.

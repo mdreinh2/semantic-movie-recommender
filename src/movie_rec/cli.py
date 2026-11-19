@@ -1,4 +1,4 @@
-"""Command-line entry points for the Member 1 data and TF-IDF pipeline."""
+"""Command-line entry points for data preparation, baselines, and evaluation."""
 
 import argparse
 import csv
@@ -45,6 +45,22 @@ def main():
     check = subcommands.add_parser("verify", help="check exported data and fitted model integrity")
     check.add_argument("--directory", type=Path, default=Path("data/processed"))
 
+    knn = subcommands.add_parser("train-itemknn", help="fit Item-KNN on training ratings")
+    knn.add_argument("--catalog", type=Path, default=Path("data/processed/catalog.csv"))
+    knn.add_argument("--train", type=Path, default=Path("data/processed/train.csv.gz"))
+    knn.add_argument("--output", type=Path, default=Path("data/processed/itemknn_model.npz"))
+    knn.add_argument("--min-overlap", type=int, default=5)
+
+    ev = subcommands.add_parser("evaluate", help="score saved recommenders on the shared protocol")
+    ev.add_argument("--directory", type=Path, default=Path("data/processed"))
+    ev.add_argument("--catalog", type=Path, default=Path("data/processed/catalog.csv"))
+    ev.add_argument("--tfidf-model", type=Path, default=Path("data/processed/tfidf_model.npz"))
+    ev.add_argument("--itemknn-model", type=Path, default=Path("data/processed/itemknn_model.npz"))
+    ev.add_argument("--models", default="tfidf,itemknn", help="comma-separated names: tfidf, itemknn")
+    ev.add_argument("--k", type=int, default=10)
+    ev.add_argument("--limit", type=int, help="optional debug cap on evaluation queries")
+    ev.add_argument("--output-dir", type=Path, default=Path("data/processed"))
+
     args = command.parse_args()
     try:
         if args.command == "prepare":
@@ -59,13 +75,49 @@ def main():
             from .handoff import verify_handoff
             print(json.dumps(verify_handoff(args.directory), indent=2))
             return
+        if args.command == "train-itemknn":
+            from .itemknn import ItemKNNRecommender
+            model = ItemKNNRecommender(args.catalog, args.train, args.min_overlap)
+            model.save(args.output)
+            print(
+                f"Saved Item-KNN for {len(model.movie_ids):,} movies "
+                f"(min_overlap={model.min_overlap}) to {args.output}"
+            )
+            return
+        if args.command == "evaluate":
+            from .evaluate import evaluate_models
+            from .itemknn import file_sha256, load_recommender
+            requested = [name.strip() for name in args.models.split(",") if name.strip()]
+            paths = {"tfidf": args.tfidf_model, "itemknn": args.itemknn_model}
+            models = {}
+            catalog_hash = file_sha256(args.catalog)
+            for name in requested:
+                if name not in paths:
+                    raise ValueError(f"Unknown model {name!r}. Use tfidf or itemknn.")
+                model = load_recommender(paths[name])
+                if model.catalog_sha256 != catalog_hash:
+                    raise ValueError(f"The {name} model and requested catalog differ.")
+                models[name] = model
+            summaries, _, _, output_paths = evaluate_models(
+                models, args.directory, args.k, args.limit, args.output_dir,
+            )
+            n_queries = next(iter(summaries.values()))["n_queries"] if summaries else 0
+            print(json.dumps({
+                "k": args.k,
+                "n_queries": n_queries,
+                "exclude_seed_only": True,
+                "models": summaries,
+                "outputs": [str(path) for path in output_paths],
+            }, indent=2))
+            return
 
         from .tfidf import TfidfRecommender
+        from .itemknn import load_recommender
 
         if getattr(args, "model", None):
-            from .handoff import sha256
-            model = TfidfRecommender.load(args.model)
-            if model.catalog_sha256 != sha256(args.catalog):
+            from .itemknn import file_sha256
+            model = load_recommender(args.model)
+            if model.catalog_sha256 != file_sha256(args.catalog):
                 raise ValueError("The saved model and requested catalog differ.")
         else:
             model = TfidfRecommender(args.catalog)
