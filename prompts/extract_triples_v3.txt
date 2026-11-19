@@ -1,0 +1,13 @@
+Read the movie overview below. Return a JSON object with a "triples" array. Every item must have three string fields: "quote", "predicate", and "label".
+
+For each item, first copy a short, exact passage from the overview into "quote". Preserve its wording, capitalization, and punctuation. Then choose a short label that the quoted passage directly supports.
+
+Choose the predicate that fits:
+- HAS_THEME: a central idea or conflict supported by the quoted action or motive.
+- HAS_SETTING: a specific place, time, or environment where the story takes place.
+- HAS_CONCEPT: a distinctive premise, event, relationship, or object that drives the story.
+
+Omit any item that requires guessing a motive, time, or place. Skip character names, movie titles, and incidental details. Return up to three strong triples. Leave a category out when the overview lacks clear evidence. If no triple is supported, return {"triples": []}.
+
+Overview:
+{overview}

@@ -1,0 +1,7 @@
+movie_id,tmdb_id,title,overview,release_date,genres,keywords,cast,directors,train_count,popularity_band
+1,101,Alpha Title,"A child searches for a lost dog in the city, and refuses to leave.",1995-01-01,[],[],[],[],12,10-99
+2,102,Beta Title,"Two rivals seek revenge, then hide in a desert town.",1996-01-01,[],[],[],[],40,10-99
+3,103,Gamma Title,,1997-01-01,[],[],[],[],2,1-9
+4,104,Delta Title,   ,1998-01-01,[],[],[],[],1,1-9
+5,105,Epsilon Title,Scientists study memory inside an old coastal laboratory.,1999-01-01,[],[],[],[],8,1-9
+2,999,Duplicate Beta,This duplicate row must not create another movie.,1996-01-01,[],[],[],[],40,10-99

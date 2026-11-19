@@ -1,4 +1,4 @@
-"""Command-line entry points for data preparation, baselines, and evaluation."""
+"""Command-line entry points for data preparation, baselines, evaluation, and extraction."""
 
 import argparse
 import csv
@@ -9,6 +9,15 @@ from contextlib import closing, nullcontext
 from pathlib import Path
 
 from .prepare import prepare
+
+
+def _add_extraction_arguments(parser):
+    parser.add_argument("--catalog", type=Path, default=Path("data/processed/catalog.csv"))
+    parser.add_argument("--prompt", type=Path, default=Path("prompts/extract_triples.txt"))
+    parser.add_argument("--model", default="qwen2.5:3b")
+    parser.add_argument("--output-dir", type=Path, default=Path("data/processed/member3"))
+    parser.add_argument("--ollama-url", default="http://127.0.0.1:11434")
+    parser.add_argument("--timeout", type=float, default=180)
 
 
 def main():
@@ -61,8 +70,42 @@ def main():
     ev.add_argument("--limit", type=int, help="optional debug cap on evaluation queries")
     ev.add_argument("--output-dir", type=Path, default=Path("data/processed"))
 
+    pilot = subcommands.add_parser(
+        "extract-pilot",
+        help="extract triples for a fixed pilot sample with local Qwen",
+    )
+    _add_extraction_arguments(pilot)
+    pilot.add_argument("--n", type=int, default=50, help="number of movies in the saved pilot sample")
+    pilot.add_argument("--seed", type=int, default=42, help="sample seed used only when creating the pilot ID file")
+
+    catalog_extract = subcommands.add_parser(
+        "extract-catalog",
+        help="resume full-catalog triple extraction for Member 4",
+    )
+    _add_extraction_arguments(catalog_extract)
+    catalog_extract.add_argument(
+        "--retry-failed", action="store_true",
+        help="run movies whose last checkpoint status is extraction_failed",
+    )
+
     args = command.parse_args()
     try:
+        if args.command == "extract-pilot":
+            from .extract import run_pilot
+            result = run_pilot(
+                args.catalog, args.prompt, args.output_dir, args.model, args.n, args.seed,
+                args.ollama_url, args.timeout,
+            )
+            print(json.dumps(result, indent=2))
+            return
+        if args.command == "extract-catalog":
+            from .extract import run_catalog
+            result = run_catalog(
+                args.catalog, args.prompt, args.output_dir, args.model,
+                args.ollama_url, args.timeout, args.retry_failed,
+            )
+            print(json.dumps(result, indent=2))
+            return
         if args.command == "prepare":
             result = prepare(args.movielens, args.tmdb, args.output, args.catalog_size, args.seed)
             print(json.dumps(result, indent=2))

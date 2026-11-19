@@ -2,8 +2,9 @@
 
 CSE 573 · Group 13
 
-This repository implements data preparation, the TF-IDF baseline, Item-KNN, and
-a shared evaluation protocol for the movie recommendation project. It links
+This repository implements data preparation, the TF-IDF baseline, Item-KNN,
+semantic triple extraction, and a shared evaluation protocol for the movie
+recommendation project. It links
 MovieLens 20M ratings to TMDB metadata, creates chronological per-user 80/20
 splits, and selects a shared catalog of 5,000 movies using training popularity.
 
@@ -84,6 +85,49 @@ Full MovieLens 20M evaluation (5,404,341 queries, seed excluded only):
 
 These numbers are reproduced by `scripts/run_member2.py`. Metric CSVs, models, and
 `data/processed/` stay gitignored.
+
+## Semantic triples (Member 3)
+
+Member 3 reads Member 1's `data/processed/catalog.csv` and does not create new
+movie IDs. Copy that file from Member 1 before running the pilot.
+`catalog_ids.csv` has no overviews. The model receives only the overview text.
+
+The prompt is `prompts/extract_triples.txt`. Keep the `{overview}` placeholder.
+A pilot run selects 50 distinct movies with nonempty overviews (seed 42) and
+saves them to `data/processed/member3/pilot_movie_ids.csv`. Later pilot runs
+reuse that file. The prompt version is the first 12 hex characters of the
+prompt text's SHA-256. Results for that version go to:
+
+`data/processed/member3/pilot/qwen2.5-3b/<prompt_version>/`
+
+`pilot_review.csv` has the title, overview, predicate, model label, normalized
+label, and quote. `rejections.csv` records why a triple was dropped.
+`extraction_status.csv` records empty overviews and model failures. Editing the
+prompt and rerunning the pilot leaves the previous version's directory in place.
+
+Labels are Unicode-normalized, lowercased, and stripped of punctuation. A
+leading a/an/the is removed. Predicate case is canonicalized to `HAS_THEME`,
+`HAS_SETTING`, or `HAS_CONCEPT`. A quote is kept only when it is an exact
+contiguous span of the overview. The same movie, predicate, and normalized
+label are not stored twice.
+
+Ollama must be running locally with `qwen2.5:3b` (`ollama pull qwen2.5:3b`).
+From the repository root:
+
+```powershell
+.\.venv\Scripts\python.exe -m movie_rec.cli extract-pilot --catalog data/processed/catalog.csv --prompt prompts/extract_triples.txt --model qwen2.5:3b --n 50 --seed 42 --output-dir data/processed/member3
+```
+
+After the pilot looks right, the resumable full-catalog command writes Member 4's
+`semantic_triples.csv` with `movie_id`, `tmdb_id`, `predicate`,
+`normalized_label`, `evidence`, `model`, and `prompt_version`. Movies with a
+blank overview or a failed extraction stay in `extraction_status.csv` and are
+omitted from the triples file. Run the same command again to continue from
+`checkpoints.jsonl`. Add `--retry-failed` to repeat failed movies.
+
+```powershell
+.\.venv\Scripts\python.exe -m movie_rec.cli extract-catalog --catalog data/processed/catalog.csv --prompt prompts/extract_triples.txt --model qwen2.5:3b --output-dir data/processed/member3
+```
 
 ## Method
 
