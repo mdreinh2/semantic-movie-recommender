@@ -59,14 +59,15 @@ def add_metadata(graph, catalog_path, cast_limit):
 def add_triples(graph, triples_path, min_confidence):
     skipped=defaultdict(int)
     for triple in read_triples(triples_path):
-        relation=LLM_RELATIONS.get(normalize_entity(triple.get("relation", "")))
+        relation_text=normalize_entity(triple.get("predicate") or triple.get("relation") or "")
+        relation=LLM_RELATIONS.get(relation_text.removeprefix("has_"))
         try:
             movie_id=int(triple["movie_id"])
             confidence=float(triple.get("confidence") or 1.0)
         except (KeyError, ValueError, TypeError):
             skipped["malformed"]+=1
             continue
-        entity=normalize_entity(triple.get("entity", ""))
+        entity=normalize_entity(triple.get("normalized_label") or triple.get("entity") or "")
         if relation is None:
             skipped["unknown_relation"]+=1
         elif movie_id not in graph.titles:
