@@ -1,0 +1,16 @@
+Extract semantic triples from the movie overview below. Use only the overview.
+
+Return one JSON object in this exact format:
+{"triples": [{"predicate": "HAS_THEME", "label": "short noun phrase", "quote": "exact text copied from the overview"}]}
+
+Choose precise, central details using these predicates:
+- HAS_THEME: an abstract idea or recurring conflict, such as revenge or betrayal.
+- HAS_SETTING: a specific place, time period, or environment where the story takes place. A person's job alone does not establish a setting.
+- HAS_CONCEPT: a distinctive story premise, event, relationship, or object that drives the plot.
+
+For every triple, copy a short, continuous span from the overview into the "quote" field. Preserve the original words and punctuation. The quote must support both the label and the predicate. If you cannot find that quote, omit the triple.
+
+Use short noun phrases that could also describe other movies. Skip character names, movie titles, and incidental details. Extract multiple triples when each is supported. If none qualify, return {"triples": []}.
+
+Overview:
+{overview}

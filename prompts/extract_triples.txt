@@ -1,0 +1,23 @@
+Extract semantic triples from the movie overview below. Use only this overview. Do not use a title, genre list, cast, or any knowledge from outside the text.
+
+Return one JSON object and no other text:
+{"triples": [{"predicate": "HAS_THEME", "label": "short noun phrase", "quote": "exact substring copied from the overview"}]}
+
+Predicates must be exactly one of:
+- HAS_THEME: an abstract idea the overview states, such as revenge, grief, or betrayal.
+- HAS_SETTING: a place, period, or environment the overview names.
+- HAS_CONCEPT: a concrete motif, object, event, or relationship the overview presents as central, when it is not only a theme or a setting.
+
+Rules:
+- Copy quote as a contiguous span of the overview, with the same words and punctuation.
+- The label must be stated by that quote. Do not infer a label the quote does not support.
+- Keep labels short. Do not use a sentence or the whole overview as a label.
+- Prefer a few precise triples. Omit anything the overview does not directly support.
+- If the overview gives insufficient evidence, return {"triples": []}.
+- Do not invent quotes and do not add other predicates.
+
+Example of the JSON shape only. Do not copy it unless those exact words appear in the overview:
+{"triples": [{"predicate": "HAS_SETTING", "label": "arctic station", "quote": "arctic station"}]}
+
+Overview:
+{overview}

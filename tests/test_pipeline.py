@@ -1,4 +1,5 @@
 import csv
+import gc
 import gzip
 import json
 import sqlite3
@@ -22,8 +23,9 @@ def write_csv(path, header, records):
 
 class PipelineRegressionTests(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
+        self.temporary = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.addCleanup(self.temporary.cleanup)
+        self.addCleanup(gc.collect)
         root = Path(self.temporary.name)
         self.ml, self.tmdb, self.out = [root / name for name in ("ml", "tmdb", "out")]
         self.ml.mkdir()
