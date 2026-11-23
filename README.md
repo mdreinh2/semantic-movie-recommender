@@ -3,8 +3,8 @@
 CSE 573 · Group 13
 
 This repository implements data preparation, the TF-IDF baseline, Item-KNN,
-semantic triple extraction, and a shared evaluation protocol for the movie
-recommendation project. It links
+semantic triple extraction, a shared evaluation protocol, the knowledge graph
+recommenders, and the final four-system evaluation and audits for the movie recommendation project. It links
 MovieLens 20M ratings to TMDB metadata, creates chronological per-user 80/20
 splits, and selects a shared catalog of 5,000 movies using training popularity.
 
@@ -128,6 +128,119 @@ omitted from the triples file. Run the same command again to continue from
 ```powershell
 .\.venv\Scripts\python.exe -m movie_rec.cli extract-catalog --catalog data/processed/catalog.csv --prompt prompts/extract_triples.txt --model qwen2.5:3b --output-dir data/processed/member3
 ```
+
+## Final evaluation (Member 5)
+
+Member 5 compares all four systems on Member 2's protocol: the same catalog,
+seed queries, held-out labels, and seed-only exclusion. It adds the remaining
+parts of the evaluation plan:
+
+* Precision@K, Recall@K, NDCG@K, and Hit Rate@K for K = 5, 10, and 20, with
+  NDCG@10 as the primary metric
+* Paired per-query Wilcoxon signed-rank tests on NDCG@10 with Holm correction.
+  With `--target llm_kg` (the default when `llm_kg` is given), the family is
+  `llm_kg` against each other system. Otherwise every pair is tested.
+* A cold-start subset of queries whose seed has fewer than 10 training ratings
+* Coverage: the share of queries whose seed has at least one candidate with a
+  positive score. Item-KNN gives all-zero scores to seeds with no co-raters.
+* A check of the projected gains (5–10% NDCG@10 over TF-IDF, 3–5%
+  Precision@10 over the metadata-only KG)
+
+### KG rankings (Member 4)
+
+Member 4's graph code is in `src/movie_rec/kg/`. Its `rank-catalog` command
+writes the Top-K files that Member 5 evaluates, in `data/processed/member4/`:
+
+```powershell
+.\.venv\Scripts\python.exe -m movie_rec.kg.cli rank-catalog --mode metadata --backend memory --k 20 --output data/processed/member4/metadata_kg_rankings.csv
+.\.venv\Scripts\python.exe -m movie_rec.kg.cli rank-catalog --mode enhanced --backend memory --k 20 --triples data/processed/member3/semantic_triples.csv --output data/processed/member4/llm_kg_rankings.csv
+```
+
+Use `--k 20` because K = 20 is the largest cutoff. The `memory` backend uses
+the same shared-entity scoring as the Neo4j store and needs no database. Use
+`--backend neo4j` to rank from a graph loaded with `movie_rec.kg.cli load`.
+
+| Column | Meaning |
+| --- | --- |
+| seed_movie_id | Canonical MovieLens ID of the seed |
+| rank | 1 = best |
+| movie_id | Recommended catalog movie, never the seed |
+| score | Weighted shared-entity score |
+| explanation | Up to three graph paths, separated by ` \| ` |
+
+A graph only ranks movies that share at least one entity with the seed, so
+some lists are shorter than 20 and a seed with no shared entities has no list.
+Missing positions count as misses. `final_report.md` reports how many query
+seeds have no list or a short list. The evaluator stops only if a file's
+longest list is shorter than the largest K, which means it was ranked with too
+small a `--k`.
+
+### Run
+
+With prepared files in `data/processed/`:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_member5.py
+```
+
+The script creates the two KG ranking files with `--k 20` if they are missing
+(`--rerank` rebuilds them, `--kg-backend neo4j` uses Neo4j). The LLM-enhanced
+graph needs Member 3's `semantic_triples.csv`. The script then evaluates every
+system whose file exists. To choose systems yourself:
+
+```powershell
+.\.venv\Scripts\python.exe -m movie_rec.cli final-evaluate `
+  --system tfidf=data/processed/tfidf_model.npz `
+  --system itemknn=data/processed/itemknn_model.npz `
+  --system metadata_kg=data/processed/member4/metadata_kg_rankings.csv `
+  --system llm_kg=data/processed/member4/llm_kg_rankings.csv
+```
+
+Outputs go to `data/processed/member5/`: `final_metrics.csv` (system × subset
+× K), `final_metrics.json`, `significance.csv`, and `final_report.md` with
+report-ready tables. `--write-query-metrics` adds per-query NDCG@10 for every
+system.
+
+### Triple audit
+
+```powershell
+.\.venv\Scripts\python.exe -m movie_rec.cli audit-sample-triples
+```
+
+This samples 200 triples from Member 3's `semantic_triples.csv` (seed 42). It
+writes `triple_review_A.csv` and `triple_review_B.csv` to
+`data/processed/member5/audit/`. Each reviewer fills `correct`, `relevant`,
+and `ontology_consistent` with 1 or 0, without seeing the other's sheet. Then:
+
+```powershell
+.\.venv\Scripts\python.exe -m movie_rec.cli audit-score-triples
+```
+
+The summary gives each criterion's rate per reviewer, agreement, and Cohen's
+kappa. A triple is valid when all three marks are 1 (target ≥ 80%). The
+summary also gives the share of processed movies with at least one accepted
+triple (target ≥ 90%). Movies with no overview do not count as processed.
+
+### Explanation audit
+
+```powershell
+.\.venv\Scripts\python.exe -m movie_rec.cli audit-sample-explanations `
+  --system metadata_kg=data/processed/member4/metadata_kg_rankings.csv `
+  --system llm_kg=data/processed/member4/llm_kg_rankings.csv
+```
+
+This samples 30 seeds ranked by both graphs and takes each graph's rank-1
+recommendation and explanation, giving 60 items. The items are shuffled and the
+sheets do not show which graph produced each one. `explanation_audit_key.csv`
+holds that mapping, so reviewers should not open it. Reviewers score
+`accuracy` and `usefulness` from 1 to 5. Then:
+
+```powershell
+.\.venv\Scripts\python.exe -m movie_rec.cli audit-score-explanations
+```
+
+The summary gives mean scores per graph (target ≥ 4.0), linear-weighted kappa,
+and a paired Wilcoxon test across seeds with Holm correction.
 
 ## Method
 
