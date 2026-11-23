@@ -88,8 +88,95 @@ def main():
         help="run movies whose last checkpoint status is extraction_failed",
     )
 
+    final = subcommands.add_parser(
+        "final-evaluate",
+        help="Member 5: compare all systems at K=5/10/20 with significance and cold-start results",
+    )
+    final.add_argument(
+        "--system", action="append", default=[], metavar="NAME=PATH",
+        help="a saved model (.npz) or Top-K ranking file (.csv/.csv.gz); repeat per system",
+    )
+    final.add_argument("--directory", type=Path, default=Path("data/processed"))
+    final.add_argument("--catalog", type=Path, default=Path("data/processed/catalog.csv"))
+    final.add_argument("--ks", default="5,10,20", help="comma-separated cutoffs")
+    final.add_argument("--cold-start-max", type=int, default=10,
+                       help="cold-start seeds have fewer than this many training ratings")
+    final.add_argument("--target", help="system tested against every other one (default: llm_kg if given)")
+    final.add_argument("--limit", type=int, help="optional debug cap on evaluation queries")
+    final.add_argument("--output-dir", type=Path, default=Path("data/processed/member5"))
+    final.add_argument("--write-query-metrics", action="store_true",
+                       help="also write per-query NDCG@10 for every system")
+
+    sample_t = subcommands.add_parser("audit-sample-triples", help="Member 5: blank triple review sheets")
+    sample_t.add_argument("--triples", type=Path, default=Path("data/processed/member3/semantic_triples.csv"))
+    sample_t.add_argument("--catalog", type=Path, default=Path("data/processed/catalog.csv"))
+    sample_t.add_argument("--n", type=int, default=200)
+    sample_t.add_argument("--seed", type=int, default=42)
+    sample_t.add_argument("--output-dir", type=Path, default=Path("data/processed/member5/audit"))
+
+    score_t = subcommands.add_parser("audit-score-triples", help="Member 5: score two triple reviews")
+    score_t.add_argument("--review-a", type=Path, default=Path("data/processed/member5/audit/triple_review_A.csv"))
+    score_t.add_argument("--review-b", type=Path, default=Path("data/processed/member5/audit/triple_review_B.csv"))
+    score_t.add_argument("--status", type=Path, default=Path("data/processed/member3/extraction_status.csv"))
+    score_t.add_argument("--triples", type=Path, default=Path("data/processed/member3/semantic_triples.csv"))
+    score_t.add_argument("--output-dir", type=Path, default=Path("data/processed/member5/audit"))
+
+    sample_e = subcommands.add_parser(
+        "audit-sample-explanations", help="Member 5: blind explanation review sheets",
+    )
+    sample_e.add_argument("--system", action="append", default=[], metavar="NAME=PATH",
+                          help="KG ranking file with an explanation column; give two")
+    sample_e.add_argument("--catalog", type=Path, default=Path("data/processed/catalog.csv"))
+    sample_e.add_argument("--n", type=int, default=30)
+    sample_e.add_argument("--seed", type=int, default=42)
+    sample_e.add_argument("--output-dir", type=Path, default=Path("data/processed/member5/audit"))
+
+    score_e = subcommands.add_parser("audit-score-explanations", help="Member 5: score two explanation reviews")
+    score_e.add_argument("--review-a", type=Path, default=Path("data/processed/member5/audit/explanation_review_A.csv"))
+    score_e.add_argument("--review-b", type=Path, default=Path("data/processed/member5/audit/explanation_review_B.csv"))
+    score_e.add_argument("--key", type=Path, default=Path("data/processed/member5/audit/explanation_audit_key.csv"))
+    score_e.add_argument("--output-dir", type=Path, default=Path("data/processed/member5/audit"))
+
     args = command.parse_args()
     try:
+        if args.command == "final-evaluate":
+            from .final_eval import parse_system_specs, run_final_evaluation
+            ks = tuple(int(value) for value in args.ks.split(",") if value.strip())
+            _, tests, hypotheses, paths = run_final_evaluation(
+                parse_system_specs(args.system), args.directory, args.output_dir, ks,
+                args.limit, args.cold_start_max, args.target, args.catalog,
+                args.write_query_metrics,
+            )
+            print(paths["report_md"].read_text(encoding="utf-8"))
+            print(json.dumps({name: str(path) for name, path in paths.items()}, indent=2))
+            return
+        if args.command == "audit-sample-triples":
+            from .audit import sample_triples
+            print(json.dumps(sample_triples(
+                args.triples, args.catalog, args.output_dir, args.n, args.seed,
+            ), indent=2))
+            return
+        if args.command == "audit-score-triples":
+            from .audit import score_triples
+            status = args.status if args.status.exists() else None
+            triples = args.triples if args.triples.exists() else None
+            print(json.dumps(score_triples(
+                args.review_a, args.review_b, args.output_dir, status, triples,
+            ), indent=2))
+            return
+        if args.command == "audit-sample-explanations":
+            from .audit import sample_explanations
+            from .final_eval import parse_system_specs
+            print(json.dumps(sample_explanations(
+                parse_system_specs(args.system), args.catalog, args.output_dir, args.n, args.seed,
+            ), indent=2))
+            return
+        if args.command == "audit-score-explanations":
+            from .audit import score_explanations
+            print(json.dumps(score_explanations(
+                args.review_a, args.review_b, args.key, args.output_dir,
+            ), indent=2))
+            return
         if args.command == "extract-pilot":
             from .extract import run_pilot
             result = run_pilot(
